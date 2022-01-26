@@ -1,0 +1,122 @@
+import java.text.SimpleDateFormat
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+    }
+}
+plugins{
+    id 'java'
+
+    id 'edu.sc.seis.launch4j' version '2.5.1'
+    id 'edu.sc.seis.macAppBundle' version '2.3.0'
+    id 'de.undercouch.download' version '4.1.2'
+    id 'com.github.johnrengelman.shadow' version '7.1.0'
+}
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+//----------------------------------------------------------------------------------------------------------------
+// DO NOT EDIT ABOVE THIS LINE
+//----------------------------------------------------------------------------------------------------------------
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+}
+dependencies {
+
+}
+
+//----------------------------------------------------------------------------------------------------------------
+// DO NOT EDIT BELOW THIS LINE
+//----------------------------------------------------------------------------------------------------------------
+
+def username = project.property("Author")
+def projectName = project.property("NameNoSpace")
+group = project.property("GroupID")
+version = rootProject.file('src/main/resources/version').text.trim().replace('.Beta', '')
+jar {
+    manifest {
+        attributes(
+                'SplashScreen-Image': '/assets/image/splash-screen.png',
+                'Implementation-Title': project.name,
+                'Implementation-Version': archiveVersion,
+                'Implementation-Vender': username,
+                'Main-Class': "${group}.${projectName.toLowerCase()}.${projectName}",
+                'Multi-Release': 'true'
+        )
+    }
+}
+def currentYear() {
+    def df = new SimpleDateFormat("yyyy")
+    df.setTimeZone(TimeZone.getTimeZone("UTC"))
+    return df.format(new Date())
+}
+macAppBundle {
+    mainClassName = "${group}.${projectName.toLowerCase()}.${projectName}"
+    appName = "${project.name}-${project.version}"
+    runtimeConfigurationName = 'shadow'
+    jarTask = 'shadowJar'
+    icon = 'src/main/resources/assets/image/icon.icns'
+    javaProperties.put('user.dir', '$APP_ROOT/Contents/Java')
+    javaProperties.put('apple.laf.useScreenMenuBar', 'true')
+    bundleExtras.put("JVMVersion", project.targetCompatibility.toString() + "+")
+}
+launch4j {
+    outfile = "${project.name}-${project.version}.exe"
+    jreMinVersion = "${project.targetCompatibility.toString()}"
+    mainClassName = "${group}.${projectName.toLowerCase()}.${projectName}"
+    icon = "${projectDir}/src/main/resources/assets/image/icon.ico"
+    version = "${project.version}"
+    textVersion = "${project.version}"
+    copyright = "2017-${currentYear()} ${project.name}"
+    companyName = "${project.name}"
+    bundledJrePath = "jre/"
+    jvmOptions = []
+    jarTask = project.tasks.shadowJar
+}
+artifacts {
+    archives shadowJar
+    archives file(project.tasks.jar.getArchivePath().getPath().replace('.jar', '.zip').replace('libs', 'distributions'))
+}
+task copyArtifacts(type: Copy) {
+    dependsOn build
+    from shadowJar
+    from file(project.tasks.jar.getArchivePath().getPath().replace('.jar', '.zip').replace('libs', 'distributions'))
+    into "${projectDir}/dist"
+}
+task copyComplededEXE(type: Copy){
+    from "$buildDir/launch4j/${project.name}-${project.version}.exe"
+    into "${projectDir}/dist"
+}
+task downloadNewerUniversalJavaApplicationStub(type: Download) {
+    description 'Downloads newer universalJavaApplicationStub'
+    src 'https://raw.githubusercontent.com/tofi86/universalJavaApplicationStub/2dbbf92b35e61194266c985c8bc6b411053a1b4a/src/universalJavaApplicationStub'
+    dest file("$buildDir/macApp/${project.name}-${project.version}.app/Contents/MacOS/universalJavaApplicationStub")
+    overwrite true
+}
+task createMacApp(type: Zip) {
+    dependsOn createApp, shadowJar
+    from("$buildDir/macApp") {
+        include "${project.name}-${project.version}.app/**"
+        exclude "${project.name}-${project.version}.app/Contents/MacOS"
+    }
+    from("$buildDir/macApp") {
+        include "${project.name}-${project.version}.app/Contents/MacOS/**"
+        fileMode 0777
+    }
+    archiveName = "${project.name}-${project.version}.zip"
+}
+copyArtifacts.finalizedBy {
+    println "${project.version} has been built. Distribution files are located in the dist directory."
+}
+clean.doFirst {
+    delete "${projectDir}/dist"
+}
+build.finalizedBy copyArtifacts
+build.finalizedBy copyComplededEXE
+shadowJar.dependsOn jar
+build.dependsOn createExe, createMacApp
+createApp.finalizedBy downloadNewerUniversalJavaApplicationStub
